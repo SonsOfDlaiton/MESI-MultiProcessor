@@ -192,7 +192,7 @@ module processor(clock,snooping,instr,data_out,in,out);
 	begin
 		out[0]=invalidade;
 		out[1]=read_miss|write_miss;
-		out[2]=block_hit;
+		out[2]=write_back; // tem que gravar na memoria o valor !!!!!!!!!!!!
 		out[3]=abort;
 		//out[4:11]=valor lido da memoria principal;
 		if(~snooping)//esta escrevendo no buss
