@@ -163,8 +163,8 @@ module cache(clock, addr, hit, state_out, data_out);
 endmodule
 
 
-module processor(clock,master,instr,data_out,in,out);
-	input clock,master;
+module processor(clock,snooping,instr,data_out,in,out);
+	input clock,snooping;
 	input[13:0] instr;
 	input[11:0] in;
 	output reg[11:0] out;
@@ -176,7 +176,7 @@ module processor(clock,master,instr,data_out,in,out);
 	wire block_hit;
 	wire[1:0] block_state;
 	wire[7:0] block_val;
-	wire[1:0] new_state0,new_state1;
+	wire[1:0] new_state,snoop_state;
 
 	wire read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort;
 
@@ -185,16 +185,19 @@ module processor(clock,master,instr,data_out,in,out);
 	assign value = instr[13:6];
 
 	cache l1(clock,addr,block_hit,block_state,block_val);
-	MESI machine0(clock,op,~block_hit, 0 ,block_state, new_state0, read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort);
-	MESI machine1(clock,op, in[2]&in[3],in[0],block_state, new_state1, 0,0,0,0,0,0,0);
-
-	assign out = {invalidade,read_miss|write_miss,block_hit,abort,block_val};
+	MESI machine(clock,op,~block_hit, 0 ,block_state, new_state, read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort);
+	MESI snoopMachine(clock,op, in[1]&in[3],in[0],block_state, snoop_state, 0,0,0,0,0,0,0);
 
 	always @(posedge clock)
 	begin
-		if(master)
+		out[0]=invalidade;
+		out[1]=read_miss|write_miss;
+		out[2]=block_hit;
+		out[3]=abort;
+		//out[4:11]=valor lido da memoria principal;
+		if(~snooping)//esta escrevendo no buss
 		begin
-			l1.state[addr[4:3]]=new_state0;
+			l1.state[addr[4:3]]=new_state;
 			if(read_hit)
 				data_out=block_val;
 			if(write_miss)
@@ -209,15 +212,14 @@ module processor(clock,master,instr,data_out,in,out);
 			if(read_miss)
 			begin
 				l1.tag[addr[4:3]]=addr[2:0];
-				if(~in[1])
+				if(~in[3])
 					l1.data[addr[4:3]]=in[4:11];
-				else
-					l1.data[addr[4:3]]=value;
 			end
 		end
-		else 
+		else // esta lendo do bus
 		begin
-			l1.state[addr[4:3]]=new_state1;
+			if(l1.tag[addr[4:3]]==addr[2:0])
+				l1.state[addr[4:3]]=snoop_state;
 		end
 	end
 
