@@ -163,8 +163,8 @@ module cache(clock, addr, hit, state_out, data_out);
 endmodule
 
 
-module processor(clock,instr,data_out,in,out);
-	input clock;
+module processor(clock,master,instr,data_out,in,out);
+	input clock,master;
 	input[13:0] instr;
 	input[11:0] in;
 	output reg[11:0] out;
