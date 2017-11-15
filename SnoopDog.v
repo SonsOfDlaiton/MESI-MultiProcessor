@@ -13,9 +13,11 @@ module MESI(clock,op_in,miss_in,inv_in,state,new_state,
 	        read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,invalidade_out,write_back_out,abort_out);
 
 input clock;
-input  op_in,miss_in,inv_in,state;
+input op_in,miss_in,inv_in,
+input[1:0] state;
 
-output reg read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,invalidade_out,write_back_out,abort_out,new_state;
+output reg read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,invalidade_out,write_back_out,abort_out;
+output reg[1:0] new_state;
 
 wire read_hit,write_hit,read_miss,write_miss
 
@@ -121,10 +123,44 @@ begin
 	endcase
 end
 
-module cache();
-	reg[] tag   [3:0];
-	reg[] state [3:0];
-	reg[] data  [3:0];
+module memory(clock,addr, write, in, out);
+	input clock, write;
+	input[4:0] addr;
+	input[7:0] in;
+
+	output reg[7:0] out;
+
+	reg [7:0] mem[0:31];
+
+	always @(posedge clock)
+	begin
+		if(write)
+			mem[addr]=in;
+		out=mem[addr];
+	end
+endmodule
+
+module cache(clock, addr, hit, state_out, data_out);
+ 	input clock;
+ 	input[4:0] addr;
+
+	reg[2:0] tag   [0:3];
+	reg[1:0] state [0:3];
+	reg[7:0] data  [0:3];
+
+	output reg hit;
+	output reg[1:0] state_out;
+	output reg[7:0] data_out;
+
+	always @(posedge clock)
+	begin
+		hit=(tag[addr[4:3]]==addr[2:0]);
+		if(hit)
+		begin
+			state_out=state[addr[4:3]];
+			data_out=data[addr[4:3]];
+		end
+	end
 endmodule
 
 
