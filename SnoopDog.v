@@ -4,19 +4,19 @@ module SnoopDog();
 //HEX 0 1 2 indicam o estado da maquina ed estados de cada 1
 //chave 0 é o clock
 //chave 1 seleciona se é read ou write
-//chaves 2-4 selecionam o endereco
-//chaves 5-7 valor a gravar
+//chaves 2-6 selecionam o endereco
+//chaves 7-14 valor a gravar
 
 endmodule
 
-module MESI(clock,op_in,miss_in,inv_in,state,new_state,
-	        read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,invalidade_out,write_back_out,abort_out);
+module MESI(clock,op_in,miss_in,inv_in,state,
+			new_state,read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,write_back_out,abort_out);
 
 input clock;
 input op_in,miss_in,inv_in,
 input[1:0] state;
 
-output reg read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,invalidade_out,write_back_out,abort_out;
+output reg read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,write_back_out,abort_out;
 output reg[1:0] new_state;
 
 wire read_hit,write_hit,read_miss,write_miss
@@ -33,7 +33,6 @@ begin
 	read_miss_out=0;
 	write_hit_out=0;
 	write_miss_out=0;
-	invalidate_out=0;
 	invalidade_out=0;
 	write_back_out=0;
 	abort_out=0;
@@ -164,17 +163,61 @@ module cache(clock, addr, hit, state_out, data_out);
 endmodule
 
 
-module processor();
+module processor(clock,instr,data_out,in,out);
+	input clock;
+	input[13:0] instr;
+	input[11:0] in;
+	output reg[11:0] out;
+	output reg[7:0] data_out;
 
-	always @(*)
+	wire op;
+	wire[4:0] addr;
+	wire[7:0] value;
+	wire block_hit;
+	wire[1:0] block_state;
+	wire[7:0] block_val;
+	wire[1:0] new_state0,new_state1;
+
+	wire read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort;
+
+	assign op = instr[0];
+	assign addr = instr[5:1];
+	assign value = instr[13:6];
+
+	cache l1(clock,addr,block_hit,block_state,block_val);
+	MESI machine0(clock,op,~block_hit, 0 ,block_state, new_state0, read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort);
+	MESI machine1(clock,op, in[2]&in[3],in[0],block_state, new_state1, 0,0,0,0,0,0,0);
+
+	assign out = {invalidade,read_miss|write_miss,block_hit,abort,block_val};
+
+	always @(posedge clock)
 	begin
-		if(instr==0)//read
+		if(master)
 		begin
-			
+			l1.state[addr[4:3]]=new_state0;
+			if(read_hit)
+				data_out=block_val;
+			if(write_miss)
+			begin
+				l1.data[addr[4:3]]=value;
+				l1.tag[addr[4:3]]=addr[2:0];
+			end
+			if(write_hit)
+			begin
+				//ja escreve no modulo
+			end
+			if(read_miss)
+			begin
+				l1.tag[addr[4:3]]=addr[2:0];
+				if(~in[1])
+					l1.data[addr[4:3]]=in[4:11];
+				else
+					l1.data[addr[4:3]]=value;
+			end
 		end
-		else        //write
+		else 
 		begin
-		
+			l1.state[addr[4:3]]=new_state1;
 		end
 	end
 
