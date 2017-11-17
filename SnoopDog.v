@@ -16,6 +16,7 @@ MESI teste  (KEY[0]			//clock
 			,SW[3]			//miss
 			,SW[4]			//invalidate
 			,SW[1:0]		//state
+			,SW[5] 			//share
 
 			,LEDR[1:0]		//new state
 			,LEDR[17]		//read hit
@@ -28,17 +29,17 @@ MESI teste  (KEY[0]			//clock
 
 endmodule
 
-module MESI(clock,op_in,miss_in,inv_in,state,
+module MESI(clock,op_in,miss_in,inv_in,state,share,
 			new_state,read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,write_back_out,abort_out);
 
 input clock;
-input op_in,miss_in,inv_in, // op_in = write
+input op_in,miss_in,inv_in,share; // op_in = write
 input[1:0] state;
 
 output reg read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,write_back_out,abort_out;
 output reg[1:0] new_state;
 
-wire read_hit,write_hit,read_miss,write_miss
+wire read_hit,write_hit,read_miss,write_miss;
 
 assign read_hit = ~op_in & ~miss_in;
 assign write_hit = op_in & ~miss_in;
@@ -52,7 +53,7 @@ begin
 	read_miss_out=0;
 	write_hit_out=0;
 	write_miss_out=0;
-	invalidade_out=0;
+	invalidate_out=0;
 	write_back_out=0;
 	abort_out=0;
 
@@ -66,8 +67,16 @@ begin
 			end
 			else  // read
 			begin
-				new_state=1;
-				read_miss_out=1;	
+				if (share)
+				begin
+					new_state=1;
+					read_miss_out=1;
+				end
+				else 
+				begin
+					new_state=3;
+					read_miss_out=1;
+				end	
 			end
 		end
 
@@ -140,6 +149,11 @@ begin
 		end
 	endcase
 end
+endmodule
+
+module readBus();
+
+endmodule 
 
 module memory(clock,addr, write, in, out);
 	input clock, write;
@@ -179,7 +193,8 @@ module cache(clock, addr, hit, state_out, data_out);
 			data_out=data[addr[4:3]];
 		end
 	end
-endmodule
+endmodule 
+
 
 
 module processor(clock,snooping,instr,data_out,in,out);
@@ -261,5 +276,4 @@ module processor(clock,snooping,instr,data_out,in,out);
 				l1.state[addr[4:3]]=snoop_state;
 		end
 	end
-
-endmodule 
+endmodule
