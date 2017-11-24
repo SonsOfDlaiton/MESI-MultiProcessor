@@ -29,6 +29,16 @@ MESI teste  (KEY[0]			//clock
 
 endmodule
 
+module MESI_OUTPUTLESS(clock,op_in,miss_in,inv_in,state,share,new_state,write_back_out);
+		input clock;
+		input op_in,miss_in,inv_in,share;
+		input[1:0] state;
+		wire read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,abort_out;
+		output write_back_out;
+		output[1:0] new_state;
+		MESI machine(clock,op_in,miss_in,inv_in,state,share,new_state,read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,write_back_out,abort_out);	
+endmodule
+
 module MESI(clock,op_in,miss_in,inv_in,state,share,
 			new_state,read_hit_out,read_miss_out,write_hit_out,write_miss_out,invalidate_out,write_back_out,abort_out);
 
@@ -155,20 +165,26 @@ module readBus();
 
 endmodule 
 
-module memory(clock,addr, write, in, out);
-	input clock, write;
-	input[4:0] addr;
-	input[7:0] in;
-
-	output reg[7:0] out;
-
+module memory(clock,instr, bus);
+	input clock;
+	input[13:0] instr;
+	inout[11:0] bus;
+	
+	wire op;
+	wire[4:0] addr;
+	wire[7:0] value;
+	
+	assign op = instr[0];
+	assign addr = instr[5:1];
+	assign value = instr[13:6];
+	
 	reg [7:0] mem[0:31];
 
 	always @(posedge clock)
 	begin
-		if(write)
-			mem[addr]=in;
-		out=mem[addr];
+		if(op)
+			mem[addr]=value;
+		bus[4:11]=mem[addr];
 	end
 endmodule
 
@@ -197,11 +213,28 @@ endmodule
 
 
 
-module processor(clock,snooping,instr,data_out,in,out);
+module toplovel();
+
+	reg[2:0] selector;
+	reg[13:0] instr;
+	output out;
+	wire bus;
+
+	processor p0(clock,selector[0],instr,out,bus);
+	processor p1(clock,selector[1],instr,out,bus);
+	processor p2(clock,selector[2],instr,out,bus);
+	memory m(clock, instr, bus);
+	
+
+endmodule
+
+
+
+module processor(clock,snooping,instr,data_out,bus);
 	input clock,snooping;
 	input[13:0] instr;
 	input[11:0] in;
-	output reg[11:0] out;
+	inout[11:0] bus;
 	output reg[7:0] data_out;
 
 	wire op;
@@ -212,7 +245,7 @@ module processor(clock,snooping,instr,data_out,in,out);
 	wire[7:0] block_val;
 	wire[1:0] new_state,snoop_state;
 
-	wire read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort;
+	wire read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort,wb_snoop;
 
 	assign op = instr[0];
 	assign addr = instr[5:1];
@@ -230,7 +263,8 @@ module processor(clock,snooping,instr,data_out,in,out);
 				,~block_hit		// Miss 				Entrada
 				, 0 			// Invalidate 			Entrada
 				,block_state 	// Situação do bloco 	Entrada
-
+				1,
+				
 				, new_state		// Nova situação 		Saída
 				, read_hit 		// Read hit 			Saída
 				,read_miss 		// Read miss 			Saída
@@ -240,15 +274,12 @@ module processor(clock,snooping,instr,data_out,in,out);
 				,write_back 	// Write back 			Saída
 				,abort); 		// Aborta memoria 		Saída
 
-	MESI snoopMachine(clock,op, in[1]&in[3],in[0],block_state, snoop_state, 0,0,0,0,0,0,0);
+	MESI_OUTPUTLESS snoopMachine(clock,op, bus[1],bus[0],block_state,1,snoop_state,wb_snoop);
 
 	always @(posedge clock)
 	begin
-		out[0]=invalidate;
-		out[1]=read_miss|write_miss;
-		out[2]=write_back; // tem que gravar na memoria o valor !!!!!!!!!!!!
-		out[3]=abort;
-		//out[4:11]=valor lido da memoria principal;
+		bus[0]=invalidate;
+		bus[1]=read_miss|write_miss;
 		if(~snooping)//esta escrevendo no buss
 		begin
 			l1.state[addr[4:3]]=new_state;
@@ -266,14 +297,21 @@ module processor(clock,snooping,instr,data_out,in,out);
 			if(read_miss)
 			begin
 				l1.tag[addr[4:3]]=addr[2:0];
-				if(~in[3])
-					l1.data[addr[4:3]]=in[4:11];
+				l1.data[addr[4:3]]=bus[4:11];
+			end
+			if(write_back)
+			begin
+			 // wb
 			end
 		end
 		else // esta lendo do bus
 		begin
 			if(l1.tag[addr[4:3]]==addr[2:0])
 				l1.state[addr[4:3]]=snoop_state;
+			if(wb_snoop)
+			begin
+			 // wb
+			end
 		end
 	end
 endmodule
