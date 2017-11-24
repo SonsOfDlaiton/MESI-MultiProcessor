@@ -301,7 +301,7 @@ module processor(clock,snooping,instr,data_out,bus);
 			end
 			if(write_back)
 			begin
-			 // wb
+			 // need to wb
 			end
 		end
 		else // esta lendo do bus
@@ -310,7 +310,7 @@ module processor(clock,snooping,instr,data_out,bus);
 				l1.state[addr[4:3]]=snoop_state;
 			if(wb_snoop)
 			begin
-			 // wb
+			 // need to wb
 			end
 		end
 	end
