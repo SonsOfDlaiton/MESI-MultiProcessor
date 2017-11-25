@@ -29,7 +29,7 @@ MESI teste  (KEY[0]			//clock
 
 endmodule
 
-module MESI_OUTPUTLESS(clock,op_in,miss_in,inv_in,state,share,new_state,write_back_out);
+module MESI_OUTPUTLESS(clock,op_in,miss_in,inv_in,state,share,new_state,write_back_out); //maquina de estados passiva (igual a outra mas sem tanto output para organizar o codigo)
 		input clock;
 		input op_in,miss_in,inv_in,share;
 		input[1:0] state;
@@ -57,7 +57,7 @@ assign read_miss = ~op_in & miss_in;
 assign write_miss = op_in & miss_in;
 
 
-always@(posedge clock)
+always@(posedge clock) //maquina de estados 100 comentarios MESI
 begin
 	read_hit_out=0;
 	read_miss_out=0;
@@ -161,30 +161,28 @@ begin
 end
 endmodule
 
-module readBus();
-
-endmodule 
-
 module memory(clock,instr, bus);
 	input clock;
 	input[13:0] instr;
-	inout[11:0] bus;
+	inout[19:0] bus;
 	
 	wire op;
 	wire[4:0] addr;
 	wire[7:0] value;
 	
-	assign op = instr[0];
-	assign addr = instr[5:1];
-	assign value = instr[13:6];
+	assign op = instr[0]; //decodifica operacao
+	assign addr = instr[5:1]; //decodifica endereço
+	assign value = instr[13:6]; //decodifica valor
 	
-	reg [7:0] mem[0:31];
+	reg [7:0] mem[0:31]; //memoria
 
-	always @(posedge clock)
+	always @(posedge clock) // talvez seja necessario detectar mudanças no bus tambem
 	begin
 		if(op)
-			mem[addr]=value;
-		bus[4:11]=mem[addr];
+			mem[addr]=value; // grava valor
+		if(bus[2])//write back
+	    	mem[addr]=bus[19:12];
+		bus[4:11]=mem[addr]; //le valor pro bus
 	end
 endmodule
 
@@ -192,40 +190,47 @@ module cache(clock, addr, hit, state_out, data_out);
  	input clock;
  	input[4:0] addr;
 
-	reg[2:0] tag   [0:3];
-	reg[1:0] state [0:3];
-	reg[7:0] data  [0:3];
+	reg[2:0] tag   [0:3]; // armazena tag
+	reg[1:0] state [0:3]; // armazena estado
+	reg[7:0] data  [0:3]; // armazena valor
 
-	output reg hit;
-	output reg[1:0] state_out;
-	output reg[7:0] data_out;
+	output reg hit; // 1 se a cache tem aquele endereço
+	output reg[1:0] state_out; // estado do endereço
+	output reg[7:0] data_out; // valor do endereço
 
-	always @(posedge clock)
+	always @(posedge clock) 
 	begin
-		hit=(tag[addr[4:3]]==addr[2:0]);
+		hit=(tag[addr[4:3]]==addr[2:0]); // se a tag bateu
 		if(hit)
 		begin
-			state_out=state[addr[4:3]];
-			data_out=data[addr[4:3]];
+			state_out=state[addr[4:3]]; // assimila estado
+			data_out=data[addr[4:3]]; //assimila valor
 		end
 	end
 endmodule 
 
 
 
-module toplovel();
-
-	reg[2:0] selector;
-	reg[13:0] instr;
-	output out;
+module MultiProcessadores(SW[17:0], LEDR[7:0]);
+	input [17:0]SW;
+	output [7:0] LEDR;
+	wire[2:0] selector;
+	wire[13:0] instr;
 	wire bus;
 
-	processor p0(clock,selector[0],instr,out,bus);
-	processor p1(clock,selector[1],instr,out,bus);
-	processor p2(clock,selector[2],instr,out,bus);
-	memory m(clock, instr, bus);
-	
+	assign selector[0] = ~SW[17]&~SW[16]; // seleciona processador 0
+	assign selector[1] = ~SW[17]&SW[16]; // seleciona prcessador 1
+	assign selector[2] = SW[17]&~SW[16]; //seleciona processador 2
+	assign instr = SW[15:2]; // instrucao
+							 //sw[2] - write?
+							 //sw[7:3] - endereço
+							 //sw[15:8] - valor a gravar
+							 //sw[17:16] - proc selector
 
+	processor p0(SW[0],selector[0],instr,LEDR,bus); //processador 0
+	processor p1(SW[0],selector[1],instr,LEDR,bus); //processador 1
+	processor p2(SW[0],selector[2],instr,LEDR,bus); //processador 2
+	memory m(SW[0], instr, bus);					//memoria compartilhada
 endmodule
 
 
@@ -233,8 +238,7 @@ endmodule
 module processor(clock,snooping,instr,data_out,bus);
 	input clock,snooping;
 	input[13:0] instr;
-	input[11:0] in;
-	inout[11:0] bus;
+	inout[19:0] bus;
 	output reg[7:0] data_out;
 
 	wire op;
@@ -247,10 +251,11 @@ module processor(clock,snooping,instr,data_out,bus);
 
 	wire read_hit,read_miss,write_hit,write_miss,invalidate,write_back,abort,wb_snoop;
 
-	assign op = instr[0];
-	assign addr = instr[5:1];
-	assign value = instr[13:6];
+	assign op = instr[0]; // decodifica operacao
+	assign addr = instr[5:1]; //decodifica endereco
+	assign value = instr[13:6]; //decodifica valor
 
+	//cache do processador
 	cache l1(clock 				// Clock 				Entrada
 			,addr				// Endereço 			Entrada
 
@@ -258,6 +263,7 @@ module processor(clock,snooping,instr,data_out,bus);
 			,block_state		// Situação do bloco	Saída
 			,block_val);		// Valor encontrado		Saída
 
+	//maquina de de estados ativa
 	MESI machine(clock 			// Clock 				Entrada
 				,op 			// Write 				Entrada
 				,~block_hit		// Miss 				Entrada
@@ -274,43 +280,47 @@ module processor(clock,snooping,instr,data_out,bus);
 				,write_back 	// Write back 			Saída
 				,abort); 		// Aborta memoria 		Saída
 
+	//maquina de estados passiva
 	MESI_OUTPUTLESS snoopMachine(clock,op, bus[1],bus[0],block_state,1,snoop_state,wb_snoop);
 
-	always @(posedge clock)
+	always @(posedge clock) // talvez seja necessario detectar mudanças no bus tambem
 	begin
-		bus[0]=invalidate;
-		bus[1]=read_miss|write_miss;
-		if(~snooping)//esta escrevendo no buss
+		bus[0]=invalidate; //grava mensagem no bus
+		bus[1]=read_miss|write_miss; //grava mensagem no bus
+		bus[2]=wb_snoop|write_back; //grava mensagem no buss
+		if(~snooping)//esta escrevendo no buss (ativa)
 		begin
-			l1.state[addr[4:3]]=new_state;
+			l1.state[addr[4:3]]=new_state; //atualiza o estado do endereço na cache
 			if(read_hit)
-				data_out=block_val;
+				data_out=block_val; // se foi read hit le o vaor
 			if(write_miss)
 			begin
-				l1.data[addr[4:3]]=value;
+				l1.data[addr[4:3]]=value; // se foi write miss atualiza a cache
 				l1.tag[addr[4:3]]=addr[2:0];
 			end
 			if(write_hit)
 			begin
-				//ja escreve no modulo
+				//ja escreve dentro do modulo
 			end
-			if(read_miss)
+			if(read_miss) // se for read miss atualiza a cache
 			begin
 				l1.tag[addr[4:3]]=addr[2:0];
 				l1.data[addr[4:3]]=bus[4:11];
 			end
 			if(write_back)
 			begin
-			 // need to wb
+			 //escrever no bus o valor de write back, e na memoria pegar esse  valor e gravar
+			 bus[19:12]=l1.data[addr[4:3]];
 			end
 		end
-		else // esta lendo do bus
+		else // esta lendo do bus (passivo)
 		begin
 			if(l1.tag[addr[4:3]]==addr[2:0])
-				l1.state[addr[4:3]]=snoop_state;
+				l1.state[addr[4:3]]=snoop_state; // se a cache tiver o endereço atualiza o estado
 			if(wb_snoop)
 			begin
-			 // need to wb
+			 //escrever no bus o valor de write back, e na memoria pegar esse  valor e gravar
+			 bus[19:12]=l1.data[addr[4:3]];
 			end
 		end
 	end
